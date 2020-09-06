@@ -1,7 +1,7 @@
 {
   "name": "reposync",
-  "version": "1.0.0",
-  "description": "A handy non frustrating alternative to NPM Link that works with Metro Bundler in React Native",
+  "version": "2.0.0",
+  "description": "A handy non-frustrating alternative to `npm/yarn link` that works with Metro Bundler for React Native.",
   "main": "index.js",
   "scripts": {
     "start": "node ./index.js --watch",
@@ -10,21 +10,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/jamiepine/reposync"
+    "url": "https://github.com/jamiepine/reposync.git"
   },
   "author": "Jamie Pine",
   "license": "ISC",
   "bugs": {
-    "url": "https://gitlab.com/Notify.me/me.notify.core/issues"
+    "url": "https://github.com/jamiepine/reposync.git/issues"
   },
-  "homepage": "https://gitlab.com/Notify.me/me.notify.core#README",
+  "homepage": "https://github.com/jamiepine/reposync.git#README",
   "dependencies": {
+    "chalk": "^2.4.1",
+    "chokidar": "^3.4.2",
     "log-update": "^3.2.0",
-    "rimraf": "^2.6.3"
+    "rimraf": "^2.6.3",
+    "winston": "^3.1.0"
   },
   "devDependencies": {
-    "chalk": "^2.4.1",
-    "chokidar": "^2.0.4",
-    "winston": "^3.1.0"
+    "@types/node": "^14.6.4",
+    "@types/rimraf": "^3.0.0",
+    "prettier": "^2.1.1",
+    "typescript": "^4.0.2"
   }
 }

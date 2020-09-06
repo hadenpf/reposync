@@ -1,8 +1,11 @@
-const sync = require('./sync')
-const config = require('./config.json');
+#!/usr/bin/env node
 
-let watch = !!process.argv.find(x => x == '--watch')
+const fs = require('fs');
+const path = require('path');
 
-config.instances.forEach(instance => {
-    sync(instance.fromDirectories, instance.toDirectories, watch)
-});
+if (!fs.existsSync(path.join(__dirname, 'build/index.js'))) {
+  console.error('[ERROR] RepoSync has not been built from source. Please run `yarn build` first!');
+  process.exit(1);
+}
+
+require('./build/index');

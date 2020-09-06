@@ -1,0 +1,8 @@
+{
+  "instances": [
+    {
+      "source": ["../pulse-framework"],
+      "output": ["../frontend/node_modules"]
+    }
+  ]
+}

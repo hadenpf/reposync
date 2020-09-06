@@ -1,13 +1,25 @@
-Edit first lines of sync.js to choose the directories to watch and which repositories to copy to. Paths are relative to this sync script.
+<!-- h1'd to stop the VSCode extension that generates the table of contents from including it -->
+<h1>RepoSync</h1>
 
-```
-// copy & watch repos
-const watchRepos = ['../repoOne']
+**A handy, non-frustrating package synchronizer.** Designed for compatibility with React Native's [Metro](https://facebook.github.io/metro/) bundler. An alternative to npm and yarn's `link` (symbolic link) functionality.
 
-// to repos
-let repos = ['../repoTwo'];
-```
+###### Table of Contents
 
-Above will move the files inside "repoOne" into "repoTwo/node_modules/repoOne"
+- [How It Works](#how-it-works)
+- [Usage](#usage)
+  - [a](#a)
+  - [Configuration](#configuration)
 
-The .git_ignore in "repoOne" is read and respected when copying files.
+## How It Works
+
+RepoSync reads the `package.json` file from the source directory specified on each `instance` within `sync.json`. It copies all the files that would be typically published to [npm](https://npm.com) into the **output directory**'s `node_modules` folder specified on the same instance
+
+## Usage
+
+RepoSync is designed to be simple and easy-to-use.
+
+### a
+
+### Configuration
+
+Copy `sync.example.json` to a file called `sync.json`.
