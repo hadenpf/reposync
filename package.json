@@ -1,12 +1,12 @@
 {
   "name": "reposync",
   "version": "2.0.0",
-  "description": "A handy non-frustrating alternative to `npm/yarn link` that works with Metro Bundler for React Native.",
+  "description": "A handy, non-frustrating alternative to `npm/yarn link` that works with Metro Bundler for React Native.",
   "main": "index.js",
   "scripts": {
-    "start": "node ./index.js --watch",
-    "build": "node ./sync.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node ./index.js",
+    "watch": "yarn start --watch",
+    "build": "tsc"
   },
   "repository": {
     "type": "git",
