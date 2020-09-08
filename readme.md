@@ -3,12 +3,16 @@
 
 **A handy, non-frustrating package synchronizer.** Designed for compatibility with React Native's [Metro](https://facebook.github.io/metro/) bundler. An alternative to npm and yarn's `link` (symbolic link) functionality.
 
-###### Table of Contents
+---
+
+**Table of Contents**
 
 - [How It Works](#how-it-works)
 - [Usage](#usage)
-  - [a](#a)
   - [Configuration](#configuration)
+- [License](#license)
+
+---
 
 ## How It Works
 
@@ -18,8 +22,10 @@ RepoSync reads the `package.json` file from the source directory specified on ea
 
 RepoSync is designed to be simple and easy-to-use.
 
-### a
-
 ### Configuration
 
 Copy `sync.example.json` to a file called `sync.json`.
+
+## License
+
+RepoSync is released under the ISC License. See [LICENSE](./LICENSE) for details.
