@@ -5,10 +5,12 @@
 
 ---
 
-**Table of Contents**
+##### Table of Contents
 
 - [How It Works](#how-it-works)
-- [Usage](#usage)
+  - [Instances](#instances)
+  - [Repositories](#repositories)
+- [Getting Started](#getting-started)
   - [Configuration](#configuration)
 - [License](#license)
 
@@ -16,16 +18,52 @@
 
 ## How It Works
 
-RepoSync reads the `package.json` file from the source directory specified on each `instance` within `sync.json`. It copies all the files that would be typically published to [npm](https://npm.com) into the **output directory**'s `node_modules` folder specified on the same instance
+Each [instance](#instances) of RepoSync reads the `package.json` of each source repository within `sync.json`. It copies all the files that would be typically published to [npm](https://npm.com) into the `node_modules` folder of each output repository.
 
-## Usage
+### Instances
 
-RepoSync is designed to be simple and easy-to-use.
+An **instance** of RepoSync is a set of input and output [repositories](#repositories), in which **all** input repositories' contents will be copied to **all** output repositories' `node_modules` directories.
+
+### Repositories
+
+A **repository** is somewhat analogous to an npm package. In the case of RepoSync specifically, a repository is defined (by configuration) as a directory that contains a `package.json` file.
+
+---
+
+## Getting Started
+
+RepoSync is designed to be extremely easy to use. You can read the sections below for specific instructions, or follow this basic guide:
+
+1. **[Configuration](#configuration)**
+   1. Duplicate the `sync.example.json` file as `sync.json`.
+   1. Edit the (relative or absolute) paths to your input and output [repositories](#repositories).
+1. **Running**
+   1. Run RepoSync once with `yarn start`, or in [watch mode](#watch-mode) with `yarn watch`.
+1. **Done!**
 
 ### Configuration
 
-Copy `sync.example.json` to a file called `sync.json`.
+RepoSync runs based on parameters that are set in `sync.json`, the main configuration file. An example `sync.json` template can be found in `sync.example.json`.
+
+A simple example for `sync.json` is as follows:
+
+```json
+{
+  "instances": [
+    {
+      "sources": [
+        "../path/to/source/repository" // RepoSync will read package.json within this directory
+      ],
+      "outputs": [
+        "../path/to/output/repository" // node_modules will be found by RepoSync automatically
+      ]
+    }
+  ]
+}
+```
+
+---
 
 ## License
 
-RepoSync is released under the ISC License. See [LICENSE](./LICENSE) for details.
+RepoSync is released under the ISC License. See the [LICENSE](./LICENSE) file for details.

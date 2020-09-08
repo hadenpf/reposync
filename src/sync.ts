@@ -7,7 +7,6 @@ import chalk from 'chalk';
 import logUpdate from 'log-update';
 
 import { EOL as eol } from 'os';
-
 import { Logger, LoggerConsole } from '.';
 
 export interface RSConfig {
@@ -17,112 +16,203 @@ export interface RSConfig {
   }[];
 }
 
-export class RepoSync {
-  constructor(private inputDirs: string[], private outputDirs: string[], private watch: boolean) {}
-
-  public sync() {}
+/**
+ * Just the properties we care about lol
+ */
+export interface PackageJson {
+  name: string;
+  syncDir?: string;
+  files?: string[];
+  dependencies?: { [key: string]: string };
+  devDependencies?: { [key: string]: string };
 }
 
-export function sync(inputDirs: string[], outputDirs: string[], watch: boolean) {
-  function searchForRepositories() {
-    const foundRepos = [];
+export class RepoSync {
+  private _done: boolean = false;
 
-    for (let _repo of outputDirs) {
-      let _found = path.resolve(`${_repo}`);
-      if (_found) foundRepos.push(_found);
+  private inputs: {
+    [name: string]: {
+      mode: 'dir' | 'files';
+      /**
+       * Absolute paths to every file/folder to watch.
+       */
+      files?: string[] | string;
+    };
+  } = {};
+
+  private outputs: {
+    [name: string]: string; // path
+  } = {};
+
+  constructor(inputDirs: string[], outputDirs: string[], watch: boolean) {
+    for (const inputDir of inputDirs) {
+      // get the package.json in each input
+      const inPackage = this.getPackage(inputDir);
+
+      // if there are no inputs in the package.json, fuck em
+      if (!inPackage || (!inPackage.files?.length && !inPackage.syncDir)) {
+        Logger.error(
+          // @ts-expect-error
+          `No inputs found for ${inPackage?.name || `package at ${inputDir}`}.`
+        );
+        return;
+      }
+
+      this.inputs[inPackage.name] = {
+        mode: inPackage.syncDir ? 'dir' : 'files',
+        files:
+          (inPackage.syncDir && this.path(inputDir, inPackage.syncDir)) ||
+          inPackage.files.map((filePath) => this.path(inputDir, filePath))
+      };
     }
 
-    if (foundRepos.length === 0) {
-      Logger.error('No repositories found');
-    } else {
-      Logger.info(chalk.bold.green('Found repositories: ') + foundRepos.map((repo) => `${eol}  ${repo}`).join(''));
+    // Set up outputs
+    for (const outputDir of outputDirs) {
+      if (!this.pathExists(outputDir)) {
+        Logger.warn('Repository does not exist at', this.path(outputDir));
+        return;
+      }
+
+      const outPackage = this.getPackage(outputDir);
+      if (!outPackage) {
+        Logger.warn('No package.json found for', this.path(outputDir));
+        return;
+      }
+
+      this.outputs[outPackage.name] = this.path(outputDir, 'node_modules');
     }
-
-    return foundRepos;
   }
 
-  function readGitIgnore(_path) {
-    if (!fs.existsSync(path.resolve(`${_path}/.gitignore`))) return false;
+  public async sync() {
+    console.log({ ins: this.inputs, outs: this.outputs });
 
-    return fs
-      .readFileSync(path.resolve(`${_path}/.gitignore`), {
-        encoding: 'utf-8'
-      })
-      .split(eol)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0 && item.indexOf('#') === -1)
-      .filter((item) => {
-        return item !== 'dist';
-      })
-      .map((item) => (item.charAt(item.length - 1) === '/' ? item.substr(0, item.length - 1) : item));
-  }
-  function readRepoSyncIgnore(_path) {
-    if (!fs.existsSync(path.resolve(`${_path}/.reposyncignore`))) return false;
+    Logger.info(chalk.bold.blue('Cleaning directories...'));
+    await this.cleanDirectories();
+    Logger.info(chalk.bold.blue('Synchronising directories...'));
 
-    return fs
-      .readFileSync(path.resolve(`${_path}/.reposyncignore`), {
-        encoding: 'utf-8'
-      })
-      .split(eol)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0 && item.indexOf('#') === -1)
-      .map((item) => (item.charAt(item.length - 1) === '/' ? item.substr(0, item.length - 1) : item));
+    for (let { files } of Object.values(this.inputs)) {
+      if (typeof files === 'string') this.watch(files);
+      else for (const path of files) this.watch(path);
+    }
   }
 
-  function cleanDirectories() {
-    return new Promise(async (resolve) => {
-      // for the dest repos
-      for (let repo of outputDirs) {
-        for (let destPath of inputDirs) {
-          let x = destPath.split('/');
+  private watch(dir: string): void {
+    let ignored = [
+      `${dir}/**/.*`, // git and dot files
+      `${dir}/sync.js`,
+      `${dir}/node_modules`
+    ];
+
+    chokidar
+      .watch(path.resolve(dir), {
+        persistent: true,
+        ignored,
+        ignoreInitial: false,
+        followSymlinks: false,
+        cwd: path.resolve('.'),
+        disableGlobbing: false,
+        usePolling: true,
+        interval: 100,
+        binaryInterval: 300,
+        alwaysStat: false,
+        depth: 99,
+        awaitWriteFinish: {
+          stabilityThreshold: 2000,
+          pollInterval: 100
+        },
+        ignorePermissionErrors: false,
+        atomic: true // or a custom 'atomicity delay', in milliseconds (default 100)
+      })
+      .on('add', (file) => {
+        Logger.debug(`File ${file} has been added`);
+        this.copyFile(file, dir);
+        logUpdate('');
+      })
+      .on('change', (file) => {
+        Logger.debug(`File ${file} has been changed`);
+        this.copyFile(file, dir);
+      })
+      .on('unlink', (file) => {
+        Logger.debug(`File ${file} has been removed`);
+        this.unlinkFile(file);
+      })
+      .on('addDir', (dir) => {
+        Logger.debug(`Directory ${dir} has been added`);
+        this.mkdir(dir, dir);
+      })
+      .on('unlinkDir', (dir) => {
+        Logger.debug(`Directory ${dir} has been removed`);
+        this.rmdir(dir);
+      })
+      .on('ready', () => {
+        if (process.env.NODE_ENV === 'production' || !this.watch) {
+          process.exit(0);
+        }
+        setTimeout(() => {
+          Logger.info(
+            `${chalk.bold.blue('Sync complete')} (${chalk.green.bold(`${dir}`)})`
+          );
+
+          this.done();
+          LoggerConsole.level = 'debug';
+        }, 1000);
+      })
+      .on('error', (error) => {
+        Logger.error(`Watcher error: ${error}`);
+      });
+    // .on('all', (event) => {
+    //   log.debug(`Event triggered: ${event}`);
+    // });
+  }
+
+  /* UTILITY FUNCTIONS */
+
+  private done(done: boolean = true) {
+    if (!this._done) {
+      setTimeout(() => {
+        Logger.info(chalk.yellow('Waiting for changes...'));
+      }, 1000);
+
+      this._done = true;
+    }
+  }
+
+  private async cleanDirectories(): Promise<void> {
+    // for the dest repos
+    for (const repo of Object.values(this.outputs)) {
+      for (const { files } of Object.values(this.inputs)) {
+        const rmPaths = [];
+
+        if (typeof files === 'string') rmPaths.push(files);
+        else {
+          for (const path of files) rmPaths.push(path);
+        }
+
+        for (const path of rmPaths) {
+          const x = this.pathSegments(path);
           let repoName = x[x.length - 1];
           let key = `${repo}/${repoName}`;
           logUpdate(key);
           await rimraf.sync(key);
         }
       }
-      logUpdate('done');
-      resolve();
-    });
+    }
+    logUpdate('done');
+    return;
   }
 
-  function destPath(repo, item) {
-    return path.resolve(`${repo}/${path.basename(path.resolve('.'))}/${item}`);
+  private pathExists(dir: string) {
+    return fs.existsSync(this.path(dir));
   }
 
-  function copyFile(file, _watch) {
-    outputDirs.forEach((repo) => {
-      try {
-        let watchDirectory = _watch.split('/');
-        watchDirectory.pop();
-        let fileName = `../${file.split(`${watchDirectory.join('/')}/`)[1]}`;
-        fs.copyFileSync(path.resolve(file), destPath(repo, fileName));
-        logUpdate(chalk.grey('Copied file: ') + file);
-      } catch (error) {
-        Logger.silly(`Copy file ${file} error: ${error}`);
-      }
-    });
-  }
+  private mkdir(dir: string, repo: string) {
+    for (const output of Object.values(this.outputs)) {
+      let outDir = this.pathSegments(output);
+      outDir.pop();
+      let dirName = this.path(`../${dir.split(`${outDir.join('/')}/`)[1]}`);
 
-  function unlinkFile(file) {
-    outputDirs.forEach((repo) => {
-      try {
-        fs.unlinkSync(destPath(repo, file));
-        logUpdate(`Deleted file ${file}`);
-      } catch (error) {
-        Logger.silly(`Delete file ${file} error: ${error}`);
-      }
-    });
-  }
-
-  function mkDir(dir, _watch) {
-    outputDirs.forEach((repo) => {
-      let watchDirectory = _watch.split('/');
-      watchDirectory.pop();
-      let dirName = `../${dir.split(`${watchDirectory.join('/')}/`)[1]}`;
-
-      const dest = destPath(repo, dirName);
-      if (!fs.existsSync(dest)) {
+      const dest = this.destPath(repo, dirName);
+      if (!this.pathExists(dest)) {
         try {
           fs.mkdirSync(dest);
           logUpdate(`${chalk.grey('Created directory')} ${dir}`);
@@ -130,12 +220,19 @@ export function sync(inputDirs: string[], outputDirs: string[], watch: boolean) 
           Logger.silly(`Create directory ${dir} error: ${error}`);
         }
       }
-    });
+    }
   }
 
-  function unlinkDir(dir) {
-    outputDirs.forEach((repo) => {
-      const dest = destPath(repo, dir);
+  /**
+   * Remove a directory from all outputs.
+   * @param dir Directory to remove
+   */
+  private rmdir(dir: string) {
+    for (const repo of Object.values(this.outputs)) {
+      const dest = this.destPath(repo, dir);
+
+      console.log({ dest });
+
       if (fs.existsSync(dest)) {
         try {
           fs.rmdirSync(dest);
@@ -144,93 +241,67 @@ export function sync(inputDirs: string[], outputDirs: string[], watch: boolean) 
           Logger.silly(`Delete directory ${dir} error: ${error}`);
         }
       }
-    });
-  }
-
-  let _done = false;
-  function done() {
-    if (!_done) {
-      setTimeout(() => {
-        Logger.info(chalk.yellow('Waiting for changes...'));
-      }, 1000);
-      _done = true;
     }
   }
 
-  async function run() {
-    Logger.info(chalk.bold.blue('Searching for target directories...'));
-    outputDirs = searchForRepositories();
-    Logger.info(chalk.bold.blue('Cleaning directories...'));
-    await cleanDirectories();
-    Logger.info(chalk.bold.blue('Synchronising directories...'));
+  private copyFile(file: string, input: string) {
+    for (const output of Object.values(this.outputs)) {
+      try {
+        let inDirectory = input.split(path.sep);
+        inDirectory.pop();
+        let fileName = this.path(`../${file.split(`${inDirectory.join('/')}/`)[1]}`);
 
-    for (let _watch of inputDirs) {
-      let ignored = [
-        `${_watch}/**/.*`, // git and dot files
-        `${_watch}/sync.js`,
-        `${_watch}/node_modules`
-      ];
-
-      chokidar
-        .watch(path.resolve(_watch), {
-          persistent: true,
-          ignored,
-          ignoreInitial: false,
-          followSymlinks: false,
-          cwd: path.resolve('.'),
-          disableGlobbing: false,
-          usePolling: true,
-          interval: 100,
-          binaryInterval: 300,
-          alwaysStat: false,
-          depth: 99,
-          awaitWriteFinish: {
-            stabilityThreshold: 2000,
-            pollInterval: 100
-          },
-          ignorePermissionErrors: false,
-          atomic: true // or a custom 'atomicity delay', in milliseconds (default 100)
-        })
-        .on('add', (file) => {
-          Logger.debug(`File ${file} has been added`);
-          copyFile(file, _watch);
-          logUpdate('');
-        })
-        .on('change', (file) => {
-          Logger.debug(`File ${file} has been changed`);
-          copyFile(file, _watch);
-        })
-        .on('unlink', (file) => {
-          Logger.debug(`File ${file} has been removed`);
-          unlinkFile(file);
-        })
-        .on('addDir', (dir) => {
-          Logger.debug(`Directory ${dir} has been added`);
-          mkDir(dir, _watch);
-        })
-        .on('unlinkDir', (dir) => {
-          Logger.debug(`Directory ${dir} has been removed`);
-          unlinkDir(dir);
-        })
-        .on('ready', () => {
-          if (process.env.NODE_ENV === 'production' || !watch) {
-            process.exit(0);
-          }
-          setTimeout(() => {
-            Logger.info(`${chalk.bold.blue('Sync complete')} (${chalk.green.bold(`${_watch}`)})`);
-
-            done();
-            LoggerConsole.level = 'debug';
-          }, 1000);
-        })
-        .on('error', (error) => {
-          Logger.error(`Watcher error: ${error}`);
-        })
-        .on('all', (event) => {
-          // log.debug(`Event triggered: ${event}`);
-        });
+        fs.copyFileSync(this.path(file), this.destPath(output, fileName));
+        logUpdate(chalk.grey('Copied file: ') + file);
+      } catch (error) {
+        Logger.silly(`Copy file ${file} error: ${error}`);
+      }
     }
   }
 
-  run();
+  private unlinkFile(file) {
+    for (const output of Object.values(this.outputs)) {
+      try {
+        fs.unlinkSync(this.destPath(output, file));
+        logUpdate(`Deleted file ${file}`);
+      } catch (error) {
+        Logger.silly(`Delete file ${file} error: ${error}`);
+      }
+    }
+  }
+
+  private path(...segments: string[]) {
+    return path.resolve(...segments);
+  }
+
+  private destPath(repo: string, item: string) {
+    return this.path(`${repo}/${path.basename(this.path('.'))}/${item}`);
+  }
+
+  private pathSegments(dir: string): string[] {
+    return this.path(dir).split(path.sep);
+  }
+
+  private getFolderName(dir: string): string {
+    const segments = this.pathSegments(dir);
+    return segments[segments.length - 1];
+  }
+
+  private getPackage(dir: string): PackageJson | false {
+    const packagePath = this.path(dir, 'package.json');
+    if (!fs.existsSync(packagePath)) {
+      Logger.warn(`No package.json found for package at directory:${eol} ${dir}`);
+      return false;
+    }
+
+    return require(packagePath);
+  }
 }
+
+/**
+ * ALL THE FOLLOWING FUNCTIONS ARE OLD CODE AND DEPRECATED.
+ */
+
+// don't annotate sync with the previous comment
+/** */
+export function oldSync(inputDirs: string[], outputDirs: string[], watch: boolean) {}
