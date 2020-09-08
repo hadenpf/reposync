@@ -297,11 +297,3 @@ export class RepoSync {
     return require(packagePath);
   }
 }
-
-/**
- * ALL THE FOLLOWING FUNCTIONS ARE OLD CODE AND DEPRECATED.
- */
-
-// don't annotate sync with the previous comment
-/** */
-export function oldSync(inputDirs: string[], outputDirs: string[], watch: boolean) {}
